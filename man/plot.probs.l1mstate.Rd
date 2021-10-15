@@ -38,38 +38,64 @@ Xuan Dang \email{xuandang11289@gmail.com}
 }
 
 \examples{
-#### EBMT data
-data(ebmt4)
+library(L1mstate)
+set.seed(1001)
 
-x1 <- ifelse(ebmt4$match=="gender mismatch", 1, 0)
-x2 <- ifelse(ebmt4$proph=="yes", 1, 0)
-x3 <- ifelse(ebmt4$year=="1990-1994", 1, 0)
-x4 <- ifelse(ebmt4$year=="1995-1998", 1, 0)
-x5 <- ifelse(ebmt4$agecl=="20-40", 1, 0)
-x6 <- ifelse(ebmt4$agecl==">40", 1, 0)
-dt <- data.frame(ebmt4[,1:11],x1,x2,x3,x4,x5,x6)
-col_names <- c("x1", "x2", "x3", "x4", "x5", "x6")
-tmat <- transMat(x = list(c(2,3,5,6),c(4,5,6),c(4,5,6),c(5,6),c(),c()),  
-                 names = c("Tx", "Rec", "AE", "Rec+AE", "Rel", "Death"))
-dat <- msprep(data = dt, trans = tmat, time = c(NA, "rec", "ae", 
-                "recae","rel", "srv"),status = c(NA, "rec.s", "ae.s", 
-                "recae.s","rel.s", "srv.s"), keep = col_names)
-# select the first 450 lines for a sake of illustration
-dat <- dat[1:450,]
-out <- cv.l1mstateR(dat, nlambda = 100, nfolds = 10)
+N <- 200
 
-### Compute the cumulative hazard and the transition probabilities
-## patient A: include the highest number of patients (287)
-ptsA <- dat[which(dat$x1==0 & dat$x2==0 & dat$x3==1 & dat$x4==0 & dat$x5==1 & dat$x6==0),]
+x1 <- rbinom(N, 1, .5)
+x2 <- rbinom(N, 1, .5)
+x3 <- rbinom(N, 1, .5)
+x4 <- rbinom(N, 1, .5)
+x5 <- rbinom(N, 1, .5)
+x6 <- rbinom(N, 1, .5)
+x <-  data.frame(x1,x2,x3,x4,x5,x6)
+col_names  <-  c(sprintf("X\%d", seq(1,6)))
+colnames(x)  <-  col_names
+
+beta12 <- c(-.65,-.65,-.65,0,0,0)
+beta13 <- c(-.65,0,0,0,-.65,0) 
+beta23 <- c(0,-.65,-.65,0,0,-.65)
+
+N12  <-  N-2*N\%/\%5
+N13 <- N-N12
+hx12 <- exp(as.matrix(x[1:N12,]) \%*\% beta12) 
+ty12 <- rexp(N12,hx12) 
+hx13 <- exp(as.matrix(x[(N12+1):N,]) \%*\% beta13) 
+ty13 <- rexp(N13,hx13)
+hx23 <- exp(as.matrix(x[1:N12,]) \%*\% beta23) 
+ty23 <- rexp(N12,hx23) 
+t2 <- rep(0,N)
+t2[1:N12]  <-  ty12
+t2[(N12+1):N]  <-  ty13
+s2  <-  rep(0,N)
+s2[1:N12] <-  rep(1,N12)
+t3 <- rep(0,N)
+t3[1:N12]  <-  ty12+ty23
+t3[(N12+1):N]  <-  ty13
+#censor case for state 3
+tcens3 <- rbinom(n=N, prob = 0.3, size = 1)
+s3 <- 1-tcens3
+
+# pre-process data into long-format using msprep
+dt <- data.frame(illt=t2, ills=s2, dt=t3, ds=s3, x)
+tmat <- matrix(c(NA,NA,NA,1,NA,NA,2,3,NA), nrow = 3)
+longdt <- msprep(time=c(NA,"illt","dt"),status=c(NA,"ills","ds"),
+                 keep = col_names, data=dt,trans=tmat)
+
+out <- cv.l1mstateR(longdt, nlambda = 100, nfolds = 10)
+
+ptsA <- longdt[which(longdt$X1==1 & longdt$X2==0 & longdt$X3==1 & longdt$X4==0 
+               & longdt$X5==1 & longdt$X6==1),]
 ## observed transitions (ground truth)
 # predicted time = 0
 events(ptsA)
 # use models to predict the transition probabilities
 # L1MSTATE
 ptA <- ptsA[which(ptsA$id == unique(ptsA$id)[1]),]
-ptA <- ptA[which(ptA$trans \%in\% c(1:4)),c(4,9:14)]
+ptA <- ptA[,c(4,9:14)]
 
-cumhazA <- cumhaz.l1mstate(object = out, longdt = dat, newdata = ptA, cv.method = "pcvl")
+cumhazA <- cumhaz.l1mstate(object=out, longdt=longdt, newdata=ptA, cv.method="pcvl")
 probA_0 <- probs.l1mstate(cumhazA, longdt = longdt, tmat, predt = 0, direction = "forward")
 statecols <- heat_hcl(6, c = c(90, 10), l = c(20, 80), power = c(1/5, 2))[c(6, 5, 3, 4, 2, 1)]
 ord <- c(1, 2, 3, 4, 5, 6)

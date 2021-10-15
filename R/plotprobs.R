@@ -27,9 +27,11 @@ plot.probs.l1mstate <- function(x,from,type=c("stacked","filled","single","separ
   ptp <- pt1[,2:(oriS+1)] # values of the predicted transition probabilities
   # check the actual transition probabilities 
   ch <- apply(ptp, 2, sum)
-  all_states <- c(1:oriS)
-  ptp <- ptp[,-which(ch==0)]
-  actual_states <- all_states[-which(ch==0)]
+  actual_states <- c(1:oriS)
+  if(any(ch==0)){
+    ptp <- ptp[,-which(ch==0)]
+    actual_states <- actual_states[-which(ch==0)]
+  }
   S <- length(actual_states)
   type <- match.arg(type)
   if (missing(legend)) {
